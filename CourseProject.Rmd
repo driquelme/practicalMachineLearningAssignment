@@ -1,0 +1,87 @@
+---
+title: "Machine Learning Week 4"
+author: "Daniel Riquelme"
+date: "march 27, 2016"
+output: html_document
+---
+
+```{r, echo=FALSE,warning=FALSE,message=FALSE}
+library(caret)
+library(doMC)
+library(dplyr)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+registerDoMC(cores = 4)
+```
+
+# Data Preparation
+## Data Load
+We Load the data for the training and testing data sets
+```{r, cache=TRUE}
+initialTraining <- read.table("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", sep = ",", header = TRUE, na.strings = c("NA", "#DIV/0!", ""))
+finalTesting <- read.table("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", sep=",", header = TRUE, na.strings = c("NA", "#DIV/0!", ""))
+```
+
+## Data Clean
+We clean up the data by removing columns that have near zero variance, are mostly NAs and the initial ones that are not necessary for fit
+```{r}
+# Remove columns with near zero variance
+nzv1 <- nearZeroVar(initialTraining)
+nzv2 <- nearZeroVar(finalTesting)
+initialTraining <- initialTraining[, -nzv1]
+finalTesting <- finalTesting[, -nzv2]
+
+# Remove columns that have mostly NAs
+nas1 <- sapply(initialTraining, function(x) mean(is.na(x) > 0.95))
+nas2 <- sapply(finalTesting, function(x) mean(is.na(x) > 0.95))
+initialTraining <- initialTraining[, nas1==F]
+finalTesting <- finalTesting[, nas2==F]
+
+# Remove initial columns that are not necessary for fit
+initialTraining <- initialTraining[, -(1:5)]
+finalTesting <- finalTesting[, -(1:5)]
+```
+
+## Data Split
+We are going to use cross validation with a data split to get two differente data sets from the original one.
+The cross validation will also enable to estimate the out of sample error.
+The idea is to use this split to find an appropriate model and use it to train the full data model for the final prediction. This final prediction uses the testing data set provided.
+```{r}
+set.seed(10)
+inTrain <- createDataPartition(y=initialTraining$classe, p=0.7, list = FALSE)
+training <- initialTraining[inTrain, ]
+testing <- initialTraining[-inTrain, ]
+```
+
+
+## Model Fit and Prediction
+My first approach is to use a random forest model. From the course videos is easy to see that this king of model has e very good performance. It's configured to use 3 fold cross validation.
+```{r, cache=TRUE}
+# fit model on ptrain1
+fit1 <- train(classe ~ ., data=training, method="rf", trControl=trainControl(method="cv", number=3, verboseIter=F))
+
+# Show model
+fit1$finalModel
+
+# Model Prediction
+pred1 <- predict(fit1, newdata=testing)
+confusionMatrix(testing$classe, pred1)
+```
+Luckily the prediction made with random forest has a very accuracy of 99.8% wich means a out of sample error of 0.2% which is very good and should work for the final prediction.
+
+## Train full dataset
+Now I perform a fit using the full dataset. This way I get more predictive power for the final answer.
+```{r, cache=TRUE}
+# fit model on ptrain1
+fit2 <- train(initialTraining$classe ~ ., data=select(initialTraining,c(-classe)), method="rf", trControl=trainControl(method="cv", number=3, verboseIter=F))
+
+# Show model
+fit2$finalModel
+```
+
+## Final prediction
+```{r}
+pred2 <- predict(fit2, newdata=select(finalTesting, c(-problem_id)))
+pred2
+```
