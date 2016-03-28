@@ -72,11 +72,13 @@ img {
 <h1>Data Preparation</h1>
 <div id="data-load" class="section level2">
 <h2>Data Load</h2>
+<p>We Load the data for the training and testing data sets</p>
 <pre class="r"><code>initialTraining &lt;- read.table(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;, sep = &quot;,&quot;, header = TRUE, na.strings = c(&quot;NA&quot;, &quot;#DIV/0!&quot;, &quot;&quot;))
 finalTesting &lt;- read.table(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;, sep=&quot;,&quot;, header = TRUE, na.strings = c(&quot;NA&quot;, &quot;#DIV/0!&quot;, &quot;&quot;))</code></pre>
 </div>
 <div id="data-clean" class="section level2">
 <h2>Data Clean</h2>
+<p>We clean up the data by removing columns that have near zero variance, are mostly NAs and the initial ones that are not necessary for fit</p>
 <pre class="r"><code># Remove columns with near zero variance
 nzv1 &lt;- nearZeroVar(initialTraining)
 nzv2 &lt;- nearZeroVar(finalTesting)
@@ -95,19 +97,20 @@ finalTesting &lt;- finalTesting[, -(1:5)]</code></pre>
 </div>
 <div id="data-split" class="section level2">
 <h2>Data Split</h2>
+<p>We are going to use cross validation with a data split to get two differente data sets from the original one. The cross validation will also enable to estimate the out of sample error. The idea is to use this split to find an appropriate model and use it to train the full data model for the final prediction. This final prediction uses the testing data set provided.</p>
 <pre class="r"><code>set.seed(10)
 inTrain &lt;- createDataPartition(y=initialTraining$classe, p=0.7, list = FALSE)
 training &lt;- initialTraining[inTrain, ]
 testing &lt;- initialTraining[-inTrain, ]</code></pre>
 </div>
-<div id="model-fit" class="section level2">
-<h2>Model Fit</h2>
-<pre class="r"><code>fitControl &lt;- trainControl(method=&quot;cv&quot;, number=3, verboseIter=F)
+<div id="model-fit-and-prediction" class="section level2">
+<h2>Model Fit and Prediction</h2>
+<p>My first approach is to use a random forest model. From the course videos is easy to see that this king of model has e very good performance. It’s configured to use 3 fold cross validation.</p>
+<pre class="r"><code># fit model on ptrain1
+fit1 &lt;- train(classe ~ ., data=training, method=&quot;rf&quot;, trControl=trainControl(method=&quot;cv&quot;, number=3, verboseIter=F))
 
-# fit model on ptrain1
-fit &lt;- train(classe ~ ., data=training, method=&quot;rf&quot;, trControl=fitControl)
-
-fit$finalModel</code></pre>
+# Show model
+fit1$finalModel</code></pre>
 <pre><code>## 
 ## Call:
 ##  randomForest(x = x, y = y, mtry = param$mtry) 
@@ -123,18 +126,72 @@ fit$finalModel</code></pre>
 ## C    0    6 2390    0    0 0.0025041736
 ## D    0    0    6 2245    1 0.0031083481
 ## E    0    0    0    4 2521 0.0015841584</code></pre>
-<pre class="r"><code>#modFit1 &lt;- train(training$classe ~ . #, preProcess=c(&quot;center&quot;, &quot;scale&quot;) , data = training , method=&quot;rpart&quot;)
-#print(modFit1)
-#fancyRpartPlot(modFit1$finalModel)
-#prediction1 &lt;- predict(modFit1, data=training)
-#print(confusionMatrix(prediction1, training$classe), digits=4)
+<pre class="r"><code># Model Prediction
+pred1 &lt;- predict(fit1, newdata=testing)
+confusionMatrix(testing$classe, pred1)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1674    0    0    0    0
+##          B    3 1135    0    1    0
+##          C    0    2 1024    0    0
+##          D    0    0    2  962    0
+##          E    0    0    0    2 1080
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.9983          
+##                  95% CI : (0.9969, 0.9992)
+##     No Information Rate : 0.285           
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9979          
+##  Mcnemar's Test P-Value : NA              
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9982   0.9982   0.9981   0.9969   1.0000
+## Specificity            1.0000   0.9992   0.9996   0.9996   0.9996
+## Pos Pred Value         1.0000   0.9965   0.9981   0.9979   0.9982
+## Neg Pred Value         0.9993   0.9996   0.9996   0.9994   1.0000
+## Prevalence             0.2850   0.1932   0.1743   0.1640   0.1835
+## Detection Rate         0.2845   0.1929   0.1740   0.1635   0.1835
+## Detection Prevalence   0.2845   0.1935   0.1743   0.1638   0.1839
+## Balanced Accuracy      0.9991   0.9987   0.9988   0.9982   0.9998</code></pre>
+<p>Luckily the prediction made with random forest has a very accuracy of 99.8% wich means a out of sample error of 0.2% which is very good and should work for the final prediction.</p>
+</div>
+<div id="train-full-dataset" class="section level2">
+<h2>Train full dataset</h2>
+<p>Now I perform a fit using the full dataset. This way I get more predictive power for the final answer.</p>
+<pre class="r"><code># fit model on ptrain1
+fit2 &lt;- train(initialTraining$classe ~ ., data=select(initialTraining,c(-classe)), method=&quot;rf&quot;, trControl=trainControl(method=&quot;cv&quot;, number=3, verboseIter=F))
 
-
-#modFit2 &lt;- rpart(classe ~ ., data=training, method=&quot;class&quot;)
-#print(modFit2)
-#fancyRpartPlot(modFit2)
-#prediction2 &lt;- predict(modFit2, newdata=testing, type=&quot;class&quot;)
-#print(confusionMatrix(prediction2, testing$classe), digits=4)</code></pre>
+# Show model
+fit2$finalModel</code></pre>
+<pre><code>## 
+## Call:
+##  randomForest(x = x, y = y, mtry = param$mtry) 
+##                Type of random forest: classification
+##                      Number of trees: 500
+## No. of variables tried at each split: 27
+## 
+##         OOB estimate of  error rate: 0.13%
+## Confusion matrix:
+##      A    B    C    D    E  class.error
+## A 5578    1    0    0    1 0.0003584229
+## B    5 3789    2    1    0 0.0021069265
+## C    0    4 3418    0    0 0.0011689071
+## D    0    0    9 3206    1 0.0031094527
+## E    0    0    0    2 3605 0.0005544774</code></pre>
+</div>
+<div id="final-prediction" class="section level2">
+<h2>Final prediction</h2>
+<pre class="r"><code>pred2 &lt;- predict(fit2, newdata=select(finalTesting, c(-problem_id)))
+pred2</code></pre>
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
+## Levels: A B C D E</code></pre>
 </div>
 </div>
 
